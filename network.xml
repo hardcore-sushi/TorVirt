@@ -1,0 +1,9 @@
+<network>
+  <name>hidemypussy</name>
+  <domain name="network"/>
+  <ip address="10.152.152.1" netmask="255.255.192.0">
+    <dhcp>
+      <range start="10.152.152.1" end="10.152.152.253"/>
+    </dhcp>
+  </ip>
+</network>

@@ -1,9 +1,15 @@
-<network>
-  <name>hidemypussy</name>
+<network xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'>
+  <name>torvirt</name>
   <domain name="network"/>
-  <ip address="10.152.152.1" netmask="255.255.192.0">
+  <ip address="10.152.152.1" prefix="24">
     <dhcp>
-      <range start="10.152.152.1" end="10.152.152.253"/>
+      <range start="10.152.152.2" end="10.152.152.9"/>
+      <range start="10.152.152.11" end="10.152.152.254"/>
     </dhcp>
   </ip>
+  <dnsmasq:options>
+    <dnsmasq:option value="dhcp-option=option:router,10.152.152.10"/>
+    <dnsmasq:option value="dhcp-option=option:dns-server,10.152.152.10"/>
+  </dnsmasq:options>
+  <port isolated="yes"/>
 </network>

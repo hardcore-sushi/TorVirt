@@ -1,5 +1,5 @@
 VirtualAddrNetworkIPv4 10.192.0.0/10
 AutomapHostsOnResolve 1
 SocksPort 0
-TransPort 10.152.152.10:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
-DNSPort 10.152.152.10:5353
+TransPort 10.2.2.254:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
+DNSPort 10.2.2.254:5353

@@ -1,13 +1,11 @@
 # TorVirt
-Whonix-like setup with a [libvirt](https://libvirt.org) workstation and a docker container as the [Tor](https://torproject.org) gateway.
-
-![Logo: KVM vers docker vers Tor](pictures/logo.jpg)
+Whonix-like setup with a [libvirt](https://libvirt.org) workstation and a [podman](https://podman.io) container as the [Tor](https://torproject.org) gateway.
 
 ## What is Whonix ?
 [Whonix](https://www.whonix.org) is a secure anonymization tool that creates a virtual machine in which all internet traffic is routed through [Tor](https://www.torproject.org/) via another virtual machine. These two VMs are connected in an internal virtual network. The only way for the workstation to access the Internet is to use the gateway, and thus anonymizing the network traffic. This allows you to run all kind of applications without worrying of IP leaks.
 
 ## What are the advatage of this project over original Whonix ?
-Whonix uses one VM for the workstation and another VM for the tor gateway. If you don't have enough RAM, this may be resource expensive. With TorVirt, you can improve the workstation performances by running the gateway inside a docker container instead of a full VM.
+Whonix uses one VM for the workstation and another VM for the tor gateway. If you don't have enough RAM, this may be resource expensive. With TorVirt, you can improve the workstation performances by running the gateway inside a container instead of a full VM.
 
 ## Is it as secure as Whonix ?
 Docker containers share the same kernel as the host. This means that if someone manages to exploit a software in the gateway container (such as the tor daemon) and then exploits a vulnerability in the kernel, he could gain access to the host's operating system. To mitigate this risk, the gateway container is started with `--cap-drop=ALL` and the only additional software installed is the tor daemon, which runs under normal user privileges.
@@ -16,7 +14,7 @@ Docker containers share the same kernel as the host. This means that if someone 
 
 Install dependencies (debian-based):
 ```
-sudo apt-get install virt-manager docker.io bridge-utils
+sudo apt-get install virt-manager podman bridge-utils
 ```
 
 Clone the repo:

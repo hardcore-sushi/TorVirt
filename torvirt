@@ -1,30 +1,33 @@
-#!/bin/bash
+#!/bin/sh
 
 set -e
 
-project_name="torvirt"
-img_name=$project_name
-container_name=$project_name
-docker_folder="gateway"
-network_file="network.xml"
-network=$project_name
-tor_trans_port="9040"
-tor_dns_port="5353"
-tor_virt_addr="10.192.0.0/10"
-gtw_ip="10.152.152.10/18"
-veth_host="$project_name-host"
-veth_gw="$project_name-gw"
+PROJECT_NAME="torvirt"
+CONTAINER_RT="podman"
+IMG_NAME=$PROJECT_NAME
+GW_CONTAINER=$PROJECT_NAME
+GW_DIR="gateway"
+NETWORK_FILE="network.xml"
+NETWORK=$PROJECT_NAME
+TOR_TRANS_PORT="9040"
+TOR_DNS_PORT="5353"
+TOR_VIRT_ADDR="10.192.0.0/10"
+GW_IP="10.2.2.254/24"
+VETH_HOST="$PROJECT_NAME-host"
+VETH_GW="$PROJECT_NAME-gw"
 
 ERROR_INVALID_ACTION=1
-ERROR_ALREADY_CONFIGURED=2
+ERROR_CANNOT_PRIVESC=2
 ERROR_NOT_CONFIGURED=3
 ERROR_ALREADY_RUNNING=4
+
+export LIBVIRT_DEFAULT_URI=qemu:///system
 
 print_help() {
 	echo -e "Usage: $0 <action>
 
 ACTIONS:
-	c, configure    Install dependencies, configure network and build gateway docker image
+	c, configure    Install dependencies, configure network and build gateway OCI image
 	s, start        Start the gateway
 "
 }
@@ -35,7 +38,7 @@ exit_with() {
 }
 
 virsh_get_field() {
-	virsh net-info $network |awk "/^$1:/{print \$2}"
+	virsh net-info $NETWORK |awk "/^$1:/{print \$2}"
 }
 
 if [ "$#" -eq 0 ]; then
@@ -44,63 +47,79 @@ if [ "$#" -eq 0 ]; then
 fi
 case $1 in
 "s" | "start")
+	# find a way to elevate privileges
+	if [ "$(id -u)" -eq 0 ]; then
+		AS_ROOT() { "$@"; }
+	elif command -v doas >/dev/null; then
+		AS_ROOT() { doas "$@"; }
+	elif command -v sudo >/dev/null; then
+		AS_ROOT() { sudo "$@"; }
+	elif command -v pkexec >/dev/null; then
+		AS_ROOT() { pkexec "$@"; }
+	elif command -v su >/dev/null; then
+		AS_ROOT() { su root -c "$@"; }
+	else
+		exit_with $ERROR_CANNOT_PRIVESC "Error: $PROJECT_NAME needs root access, but neither doas, sudo, pkexec nor su could be found."
+	fi
 	# check whether network and gateway have been configured
-	if [ -z "$(virsh net-list --all | grep $network)" ]; then
-		exit_with $ERROR_NOT_CONFIGURED "Error: network $network not found. Did you run \"$project_name configure\" ?"
+	if [ -z "$(virsh net-list --all | grep $NETWORK)" ]; then
+		exit_with $ERROR_NOT_CONFIGURED "Error: network $NETWORK not found. Did you run \"$PROJECT_NAME configure\" ?"
 	fi
-	output=$(docker images ls -q -f reference=$img_name)
+	output=$($CONTAINER_RT image ls -q -f reference=$IMG_NAME)
 	if [ -z "$output" ]; then
-		exit_with $ERROR_NOT_CONFIGURED "Error: docker image $img_name not found. Did you run \"$project_name configure\" first ?"
+		exit_with $ERROR_NOT_CONFIGURED "Error: OCI image $IMG_NAME not found. Did you run \"$PROJECT_NAME configure\" first ?"
 	fi
-	output=$(docker ps -q -f name=$container_name)
+	output=$($CONTAINER_RT ps -q -f name=$GW_CONTAINER)
 	if [ "$output" ]; then
-		exit_with $ERROR_ALREADY_RUNNING "Error: conatiner $container_name is already running"
+		exit_with $ERROR_ALREADY_RUNNING "Error: conatiner $GW_CONTAINER is already running"
 	fi
-	output=$(docker ps -aq -f status=exited -f name=$container_name)
+	output=$($CONTAINER_RT ps -aq -f status=exited -f name=$GW_CONTAINER)
 	if [ "$output" ]; then
-		docker rm $container_name
+		$CONTAINER_RT rm $GW_CONTAINER
 	fi
-	# start $network
+	# start $NETWORK
 	network_started=$(virsh_get_field "Active")
 	if [ $network_started = "no" ]; then
-		virsh net-start $network
+		virsh net-start $NETWORK
 	fi
 	brif=$(virsh_get_field "Bridge")
 	# configure veth interfaces
-	if ip link show $veth_host >/dev/null 2>/dev/null; then
-		ip link del $veth_host
+	if ip link show $VETH_HOST >/dev/null 2>/dev/null; then
+		AS_ROOT ip link del $VETH_HOST
 	fi
-	ip link add $veth_gw type veth peer name $veth_host
-	brctl addif $brif $veth_host
-	ip link set $veth_host up
+	AS_ROOT ip link add $VETH_GW type veth peer name $VETH_HOST
+	AS_ROOT brctl addif $brif $VETH_HOST
+	AS_ROOT ip link set $VETH_HOST up
 	# start gateway on wait.sh
-	docker run --rm -itd --cap-drop=ALL --name $container_name $img_name >/dev/null
-	pid=$(docker inspect -f '{{.State.Pid}}' $container_name)
-	# setup gateway networing inside $network
-	ip link set netns $pid dev $veth_gw
-	nsenter -t $pid -n ip link set $veth_gw up
-	nsenter -t $pid -n ip addr add $gtw_ip dev $veth_gw
+	$CONTAINER_RT run --rm -itd --cap-drop=ALL --security-opt=no-new-privileges --name $GW_CONTAINER $IMG_NAME >/dev/null
+	pid=$($CONTAINER_RT inspect -f '{{.State.Pid}}' $GW_CONTAINER)
+	# setup gateway networing inside $NETWORK
+	AS_ROOT ip link set netns $pid dev $VETH_GW
+	AS_ROOT nsenter -t $pid -n ip link set $VETH_GW up
+	AS_ROOT nsenter -t $pid -n ip addr add $GW_IP dev $VETH_GW
 	# allow *.onion
-	nsenter -t $pid -n iptables -t nat -A PREROUTING -i $veth_gw -p tcp -d $tor_virt_addr --syn -j REDIRECT --to-ports $tor_trans_port
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p tcp -d $TOR_VIRT_ADDR --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
 	# redirect DNS to tor
-	nsenter -t $pid -n iptables -t nat -A PREROUTING -i $veth_gw -p udp --dport 53 -j REDIRECT --to-ports $tor_dns_port
-	nsenter -t $pid -n iptables -t nat -A PREROUTING -i $veth_gw -p udp --dport $tor_dns_port -j REDIRECT --to-ports $tor_dns_port
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p udp --dport 53 -j REDIRECT --to-ports $TOR_DNS_PORT
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p udp --dport $TOR_DNS_PORT -j REDIRECT --to-ports $TOR_DNS_PORT
 	# redirect TCP to tor
-	nsenter -t $pid -n iptables -t nat -A PREROUTING -i $veth_gw -p tcp --syn -j REDIRECT --to-ports $tor_trans_port
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p tcp --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
 	# start tor
-	docker kill -s USR1 $container_name >/dev/null
-	docker attach $container_name
+	$CONTAINER_RT kill -s USR1 $GW_CONTAINER >/dev/null
+	$CONTAINER_RT attach $GW_CONTAINER
 	;;
 "c" | "configure")
-	if virsh net-info $network >/dev/null 2>/dev/null; then
-		exit_with $ERROR_ALREADY_CONFIGURED "Error: network $network already exists."
+	if virsh net-info $NETWORK >/dev/null 2>/dev/null; then
+		echo "Libvirt network $NETWORK already exists."
+	else
+		virsh net-define $NETWORK_FILE
 	fi
-	output=$(docker images ls -q -f reference=$img_name)
+	output=$($CONTAINER_RT image ls -q -f reference=$IMG_NAME)
 	if [ "$output" ]; then
-		exit_with $ERROR_ALREADY_CONFIGURED "Error: image $img_name already exists"
+		echo "OCI image $IMG_NAME already exists"
+	else
+		cd $GW_DIR && $CONTAINER_RT build -t $IMG_NAME .
 	fi
-	virsh net-define $network_file
-	cd $docker_folder && docker build -t $img_name .
 	;;
 *)
 	print_help

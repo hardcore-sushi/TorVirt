@@ -22,7 +22,7 @@ sudo apt-get install libvirt-daemon libvirt-clients podman bridge-utils
 
 ## Download
 ```
-git clone --depth=1 https://forge.chapril.org/hardcoresushi/hidemypussy.git
+git clone --depth=1 https://forge.chapril.org/hardcoresushi/torvirt.git
 ```
 All commits should be signed with my OpenPGP key available on keyservers. You can import it like this:
 ```
@@ -33,7 +33,7 @@ Email: `Hardcore Sushi <hardcore.sushi@disroot.org>`
 
 Once imported, verify the latest commit:
 ```
-cd hidemypussy
+cd torvirt
 git verify-commit HEAD
 ```
 This must show you something like:

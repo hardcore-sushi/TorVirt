@@ -6,22 +6,22 @@ PROJECT_NAME="torvirt"
 CONTAINER_RT="podman"
 IMG_NAME=$PROJECT_NAME
 GW_CONTAINER=$PROJECT_NAME
+GW_IF="$PROJECT_NAME-gw"
+NETWORK=$PROJECT_NAME
+
 GW_DIR="gateway"
 NETWORK_FILE="network.xml"
-NETWORK=$PROJECT_NAME
 TOR_TRANS_PORT="9040"
 TOR_DNS_PORT="5353"
 TOR_VIRT_ADDR="10.192.0.0/10"
 GW_IP="10.2.2.254/24"
-VETH_HOST="$PROJECT_NAME-host"
-VETH_GW="$PROJECT_NAME-gw"
+
+export LIBVIRT_DEFAULT_URI=qemu:///system
 
 ERROR_INVALID_ACTION=1
 ERROR_CANNOT_PRIVESC=2
 ERROR_NOT_CONFIGURED=3
 ERROR_ALREADY_RUNNING=4
-
-export LIBVIRT_DEFAULT_URI=qemu:///system
 
 print_help() {
 	echo -e "Usage: $0 <action>
@@ -82,28 +82,22 @@ case $1 in
 	if [ $network_started = "no" ]; then
 		virsh net-start $NETWORK
 	fi
-	brif=$(virsh_get_field "Bridge")
-	# configure veth interfaces
-	if ip link show $VETH_HOST >/dev/null 2>/dev/null; then
-		AS_ROOT ip link del $VETH_HOST
-	fi
-	AS_ROOT ip link add $VETH_GW type veth peer name $VETH_HOST
-	AS_ROOT brctl addif $brif $VETH_HOST
-	AS_ROOT ip link set $VETH_HOST up
+	# create gateway macvlan interface
+	AS_ROOT ip link add $GW_IF link $(virsh_get_field "Bridge") type macvlan mode private
 	# start gateway on wait.sh
 	$CONTAINER_RT run --rm -itd --cap-drop=ALL --security-opt=no-new-privileges --name $GW_CONTAINER $IMG_NAME >/dev/null
 	pid=$($CONTAINER_RT inspect -f '{{.State.Pid}}' $GW_CONTAINER)
 	# setup gateway networing inside $NETWORK
-	AS_ROOT ip link set netns $pid dev $VETH_GW
-	AS_ROOT nsenter -t $pid -n ip link set $VETH_GW up
-	AS_ROOT nsenter -t $pid -n ip addr add $GW_IP dev $VETH_GW
+	AS_ROOT ip link set netns $pid dev $GW_IF
+	AS_ROOT nsenter -t $pid -n ip link set $GW_IF up
+	AS_ROOT nsenter -t $pid -n ip addr add $GW_IP dev $GW_IF
 	# allow *.onion
-	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p tcp -d $TOR_VIRT_ADDR --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p tcp -d $TOR_VIRT_ADDR --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
 	# redirect DNS to tor
-	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p udp --dport 53 -j REDIRECT --to-ports $TOR_DNS_PORT
-	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p udp --dport $TOR_DNS_PORT -j REDIRECT --to-ports $TOR_DNS_PORT
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p udp --dport 53 -j REDIRECT --to-ports $TOR_DNS_PORT
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p udp --dport $TOR_DNS_PORT -j REDIRECT --to-ports $TOR_DNS_PORT
 	# redirect TCP to tor
-	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $VETH_GW -p tcp --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
+	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p tcp --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
 	# start tor
 	$CONTAINER_RT kill -s USR1 $GW_CONTAINER >/dev/null
 	$CONTAINER_RT attach $GW_CONTAINER

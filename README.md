@@ -22,7 +22,7 @@ sudo apt-get install libvirt-daemon libvirt-clients podman bridge-utils
 
 ## Download
 ```
-git clone --depth=1 https://forge.chapril.org/hardcoresushi/torvirt.git
+git clone --depth=1 https://forge.chapril.org/hardcoresushi/TorVirt.git
 ```
 All commits should be signed with my OpenPGP key available on keyservers. You can import it like this:
 ```
@@ -33,7 +33,7 @@ Email: `Hardcore Sushi <hardcore.sushi@disroot.org>`
 
 Once imported, verify the latest commit:
 ```
-cd torvirt
+cd TorVirt
 git verify-commit HEAD
 ```
 This must show you something like:
@@ -49,7 +49,7 @@ Primary key fingerprint: B64E FE86 CEE1 D054 F082  1711 AFE3 8434 4A45 E13A
 
 ## Setup
 ```
-./torvirt.sh configure
+./torvirt configure
 ```
 
 ## Create the workstation
@@ -60,7 +60,7 @@ Make sure that *torvirt* is the only network configured for the VM, otherwise le
 ## Start
 Start the gateway:
 ```
-./torvirt.sh start
+./torvirt start
 ```
 
 Start the workstation !

@@ -13,11 +13,13 @@ Containers share the same kernel as the host. This means that if someone manages
 - Container processes cannot gain additional privileges (`--security-opt=no-new-privileges`)
 - The entry point is executed with normal user privileges
 
+The risk on the workstation side depends on the guest OS, on the hypervisor used and on the interactions between the host and the VM (filesystem sharing, hardware passthrough, etc.)
+
 # Use it !
 
 Install dependencies (debian-based):
 ```
-sudo apt-get install libvirt-daemon libvirt-clients podman bridge-utils
+sudo apt-get install libvirt-daemon libvirt-clients podman
 ```
 
 ## Download

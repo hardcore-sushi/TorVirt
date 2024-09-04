@@ -1,7 +1,7 @@
 # TorVirt
 [Whonix](https://www.whonix.org)-like setup with a [libvirt](https://libvirt.org) workstation and a [podman](https://podman.io) container as the [Tor](https://torproject.org) gateway.
 
-![TorVirt illustration digram](images/diagram.svg)
+![TorVirt illustration diagram](images/diagram.svg)
 
 ## What are the advantage of this project over original Whonix ?
 Whonix uses one VM for the workstation and another VM for the Tor gateway. This can be costly in terms of performance and resource usage. TorVirt improves on this by running the gateway in a lightweight container instead of a full VM.

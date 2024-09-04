@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+set -euo pipefail
 
 PROJECT_NAME="torvirt"
 CONTAINER_RT="podman"
@@ -24,7 +24,7 @@ ERROR_NOT_CONFIGURED=3
 ERROR_ALREADY_RUNNING=4
 
 print_help() {
-	echo -e "Usage: $0 <action>
+	echo "Usage: $0 <action>
 
 ACTIONS:
 	c, configure    Install dependencies, configure network and build gateway OCI image
@@ -33,7 +33,7 @@ ACTIONS:
 }
 
 exit_with() {
-	echo $2 >&2
+	echo "$2" >&2
 	exit $1
 }
 
@@ -62,7 +62,7 @@ case $1 in
 		exit_with $ERROR_CANNOT_PRIVESC "Error: $PROJECT_NAME needs root access, but neither doas, sudo, pkexec nor su could be found."
 	fi
 	# check whether network and gateway have been configured
-	if [ -z "$(virsh net-list --all | grep $NETWORK)" ]; then
+	if ! virsh net-list --all | grep -q $NETWORK; then
 		exit_with $ERROR_NOT_CONFIGURED "Error: network $NETWORK not found. Did you run \"$PROJECT_NAME configure\" ?"
 	fi
 	output=$($CONTAINER_RT image ls -q -f reference=$IMG_NAME)
@@ -79,11 +79,11 @@ case $1 in
 	fi
 	# start $NETWORK
 	network_started=$(virsh_get_field "Active")
-	if [ $network_started = "no" ]; then
+	if [ "$network_started" = "no" ]; then
 		virsh net-start $NETWORK
 	fi
 	# create gateway macvlan interface
-	AS_ROOT ip link add $GW_IF link $(virsh_get_field "Bridge") type macvlan mode private
+	AS_ROOT ip link add $GW_IF link "$(virsh_get_field "Bridge")" type macvlan mode private
 	# start gateway on wait.sh
 	$CONTAINER_RT run --rm -itd --cap-drop=ALL --security-opt=no-new-privileges --name $GW_CONTAINER $IMG_NAME >/dev/null
 	pid=$($CONTAINER_RT inspect -f '{{.State.Pid}}' $GW_CONTAINER)
@@ -98,6 +98,9 @@ case $1 in
 	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p udp --dport $TOR_DNS_PORT -j REDIRECT --to-ports $TOR_DNS_PORT
 	# redirect TCP to tor
 	AS_ROOT nsenter -t $pid -n iptables -t nat -A PREROUTING -i $GW_IF -p tcp --syn -j REDIRECT --to-ports $TOR_TRANS_PORT
+	# disable IP forwarding to prevent leaking unhandled traffic
+	AS_ROOT nsenter -t $pid -n iptables -P FORWARD DROP
+	AS_ROOT nsenter -t $pid -n sysctl -q net.ipv4.ip_forward=0
 	# start tor
 	$CONTAINER_RT kill -s USR1 $GW_CONTAINER >/dev/null
 	$CONTAINER_RT attach $GW_CONTAINER

@@ -66,3 +66,6 @@ Start the gateway:
 ```
 
 Start the workstation !
+
+## Troubleshooting
+IPv6 may not work inside the workstation. For example, if you use Firefox, you may need to set `network.dns.disableIPv6` to `true` to be able to connect to sites.
